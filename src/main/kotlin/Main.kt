@@ -209,14 +209,14 @@ fun main() {
         })
     }
 
-    fun handleChatEvent(broadcasterUserId: String, chatterUserId: String, message: Message?, sourceRoomId: String?) {
+    fun handleChatEvent(broadcasterUserId: String, chatterUserId: String, message: Message?, sourceRoomId: String?, sourceRoomLogin: String?) {
         val msg = message?.cleanedText?.takeIf { it.isNotEmpty() } ?: return
         val cachedSession = sharingChannels[broadcasterUserId]
         if (cachedSession == NOT_SHARING) return
 
         if (cachedSession == null) {
             if (sourceRoomId != null && sourceRoomId != broadcasterUserId) {
-                cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId)
+                cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
                 exec.execute { loadSharing(broadcasterUserId) }
             } else {
                 exec.execute {
@@ -227,26 +227,26 @@ fun main() {
                     }
 
                     if (!sharingChannels[broadcasterUserId].isNullOrEmpty()) {
-                        cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId)
+                        cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
                     }
                 }
             }
         } else {
-            cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId)
+            cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
         }
     }
 
     conduit.eventManager.onEvent(ChannelChatMessageEvent::class.java) {
-        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId)
+        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId, it.sourceBroadcasterUserLogin)
     }
 
     conduit.eventManager.onEvent(ChannelChatNotificationEvent::class.java) {
-        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId)
+        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId, it.sourceBroadcasterUserLogin)
     }
 
     conduit.eventManager.onEvent(SuspiciousUserMessageEvent::class.java) {
         if (it.status == SuspiciousStatus.RESTRICTED) {
-            handleChatEvent(it.broadcasterUserId, it.userId, it.message, null)
+            handleChatEvent(it.broadcasterUserId, it.userId, it.message, null, null)
         }
     }
 
@@ -271,7 +271,7 @@ private fun loadSharing(channelId: String) {
     sharingChannels.put(channelId, session?.sessionId ?: NOT_SHARING)
 }
 
-private fun cacheMessage(channelId: String, userId: String, message: String, sourceRoomId: String?) {
+private fun cacheMessage(channelId: String, userId: String, message: String, sourceRoomId: String?, sourceRoomLogin: String?) {
     val cache = messages.computeIfAbsent(channelId) {
         createCache {
             maxSize = MAX_CHATTERS_PER_CHANNEL
@@ -284,11 +284,16 @@ private fun cacheMessage(channelId: String, userId: String, message: String, sou
         ConcurrentBoundedDeque(MESSAGES_PER_USER)
     }
 
-    queue.offer(CachedMessage(message, sourceRoomId))
+    queue.offer(CachedMessage(message, Instant.now().epochSecond, sourceRoomId, sourceRoomLogin))
 }
 
 @Serializable
-data class CachedMessage(val text: String, val sourceId: String? = null)
+data class CachedMessage(
+    val text: String,
+    val ts: Long? = null,
+    val sourceId: String? = null,
+    val sourceLogin: String? = null
+)
 
 @Serializable
 data class Payload(
