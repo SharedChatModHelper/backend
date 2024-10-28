@@ -101,20 +101,29 @@ fun main() {
 
     conduit.eventManager.onEvent(UserAuthorizationGrantEvent::class.java) { e ->
         exec.execute {
-            conduit.register(SubscriptionTypes.CHANNEL_MODERATE) {
-                it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
-            }
-            conduit.register(SubscriptionTypes.CHANNEL_CHAT_MESSAGE) {
-                it.broadcasterUserId(e.userId).userId(e.userId).build()
-            }
-            conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_BEGIN) { it.broadcasterUserId(e.userId).build() }
-            conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_UPDATE) { it.broadcasterUserId(e.userId).build() }
-            conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_END) { it.broadcasterUserId(e.userId).build() }
-            conduit.register(SubscriptionTypes.CHANNEL_CHAT_NOTIFICATION) {
-                it.broadcasterUserId(e.userId).userId(e.userId).build()
-            }
-            conduit.register(SubscriptionTypes.CHANNEL_SUSPICIOUS_USER_MESSAGE) {
-                it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
+            val fresh = helix.getEventSubSubscriptions(null, EventSubSubscriptionStatus.ENABLED, null, e.userId, null, null)
+                .executeOrNull()
+                ?.subscriptions
+                ?.isEmpty()
+                ?: true
+            if (fresh) {
+                conduit.register(SubscriptionTypes.CHANNEL_MODERATE) {
+                    it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
+                }
+                conduit.register(SubscriptionTypes.CHANNEL_CHAT_MESSAGE) {
+                    it.broadcasterUserId(e.userId).userId(e.userId).build()
+                }
+                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_BEGIN) { it.broadcasterUserId(e.userId).build() }
+                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_UPDATE) {
+                    it.broadcasterUserId(e.userId).build()
+                }
+                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_END) { it.broadcasterUserId(e.userId).build() }
+                conduit.register(SubscriptionTypes.CHANNEL_CHAT_NOTIFICATION) {
+                    it.broadcasterUserId(e.userId).userId(e.userId).build()
+                }
+                conduit.register(SubscriptionTypes.CHANNEL_SUSPICIOUS_USER_MESSAGE) {
+                    it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
+                }
             }
 
             loadSharing(e.userId)
