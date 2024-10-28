@@ -184,9 +184,9 @@ fun main() {
             userId = user.userId,
             userLogin = user.userLogin,
             userName = user.userName,
-            sourceRoomId = "", // todo: add missing field to twitch4j
-            sourceRoomLogin = "", // todo: add missing field to twitch4j
-            sourceRoomName = "", // todo: add missing field to twitch4j
+            sourceRoomId = e.sourceBroadcasterUserId ?: "",
+            sourceRoomLogin = e.sourceBroadcasterUserLogin ?: "",
+            sourceRoomName = e.sourceBroadcasterUserName ?: "",
             moderatorId = e.moderatorUserId,
             moderatorLogin = e.moderatorUserLogin,
             moderatorName = e.moderatorUserName,
