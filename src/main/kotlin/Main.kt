@@ -217,7 +217,13 @@ fun main() {
         })
     }
 
-    fun handleChatEvent(broadcasterUserId: String, chatterUserId: String, message: Message?, sourceRoomId: String?, sourceRoomLogin: String?) {
+    fun handleChatEvent(
+        broadcasterUserId: String,
+        chatterUserId: String,
+        message: Message?,
+        sourceRoomId: String?,
+        sourceRoomLogin: String?
+    ) {
         val msg = message?.cleanedText?.takeIf { it.isNotEmpty() } ?: return
         val cachedSession = sharingChannels[broadcasterUserId]
         if (cachedSession == NOT_SHARING) return
@@ -245,11 +251,23 @@ fun main() {
     }
 
     conduit.eventManager.onEvent(ChannelChatMessageEvent::class.java) {
-        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId, it.sourceBroadcasterUserLogin)
+        handleChatEvent(
+            it.broadcasterUserId,
+            it.chatterUserId,
+            it.message,
+            it.sourceBroadcasterUserId,
+            it.sourceBroadcasterUserLogin
+        )
     }
 
     conduit.eventManager.onEvent(ChannelChatNotificationEvent::class.java) {
-        handleChatEvent(it.broadcasterUserId, it.chatterUserId, it.message, it.sourceBroadcasterUserId, it.sourceBroadcasterUserLogin)
+        handleChatEvent(
+            it.broadcasterUserId,
+            it.chatterUserId,
+            it.message,
+            it.sourceBroadcasterUserId,
+            it.sourceBroadcasterUserLogin
+        )
     }
 
     conduit.eventManager.onEvent(SuspiciousUserMessageEvent::class.java) {
@@ -279,7 +297,13 @@ private fun loadSharing(channelId: String) {
     sharingChannels.put(channelId, session?.sessionId ?: NOT_SHARING)
 }
 
-private fun cacheMessage(channelId: String, userId: String, message: String, sourceRoomId: String?, sourceRoomLogin: String?) {
+private fun cacheMessage(
+    channelId: String,
+    userId: String,
+    message: String,
+    sourceRoomId: String?,
+    sourceRoomLogin: String?
+) {
     val cache = messages.computeIfAbsent(channelId) {
         createCache {
             maxSize = MAX_CHATTERS_PER_CHANNEL
