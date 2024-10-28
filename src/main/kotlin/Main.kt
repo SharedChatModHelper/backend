@@ -288,7 +288,7 @@ fun main() {
         sharingChannels.remove(it.broadcasterUserId)
 
         val message = "The shared chat session has ended! Mods, you can review moderation actions at our website"
-        helix.sendChatMessage(null, ChatMessage(it.broadcasterUserId, BOT_ID, message, null))
+        helix.sendChatMessage(null, ChatMessage(it.broadcasterUserId, BOT_ID, message, null)).executeOrNull()
     }
 }
 
