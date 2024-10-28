@@ -101,7 +101,7 @@ fun main() {
 
     conduit.eventManager.onEvent(UserAuthorizationGrantEvent::class.java) { e ->
         exec.execute {
-            val fresh = helix.getEventSubSubscriptions(null, EventSubSubscriptionStatus.ENABLED, null, e.userId, null, null)
+            val fresh = helix.getEventSubSubscriptions(null, null, null, e.userId, null, null)
                 .executeOrNull()
                 ?.subscriptions
                 ?.isEmpty()
@@ -133,12 +133,11 @@ fun main() {
     conduit.eventManager.onEvent(UserAuthorizationRevokeEvent::class.java) {
         sharingChannels.remove(it.userId)
         exec.execute {
-            helix.getEventSubSubscriptions(null, EventSubSubscriptionStatus.ENABLED, null, it.userId, null, null)
+            helix.getEventSubSubscriptions(null, null, null, it.userId, null, null)
                 .execute()
                 .subscriptions
-                .forEach { sub ->
-                    helix.deleteEventSubSubscription(null, sub.id).executeOrNull()
-                }
+                .filter { sub -> sub.status == EventSubSubscriptionStatus.ENABLED }
+                .forEach { sub -> helix.deleteEventSubSubscription(null, sub.id).executeOrNull() }
         }
     }
 
