@@ -1,6 +1,7 @@
 package io.github.iprodigy
 
 import com.github.twitch4j.auth.providers.TwitchIdentityProvider
+import com.github.twitch4j.client.websocket.domain.WebsocketConnectionState
 import com.github.twitch4j.common.util.ThreadUtils
 import com.github.twitch4j.eventsub.EventSubSubscriptionStatus
 import com.github.twitch4j.eventsub.domain.SuspiciousStatus
@@ -10,6 +11,9 @@ import com.github.twitch4j.eventsub.domain.moderation.UserTarget
 import com.github.twitch4j.eventsub.events.*
 import com.github.twitch4j.eventsub.socket.conduit.TwitchConduitSocketPool
 import com.github.twitch4j.eventsub.socket.events.ConduitShardReassociationFailureEvent
+import com.github.twitch4j.eventsub.socket.events.EventSocketClosedByTwitchEvent
+import com.github.twitch4j.eventsub.socket.events.EventSocketConnectionStateEvent
+import com.github.twitch4j.eventsub.socket.events.EventSocketWelcomedEvent
 import com.github.twitch4j.eventsub.subscriptions.SubscriptionTypes
 import com.github.twitch4j.helix.TwitchHelixBuilder
 import com.github.twitch4j.helix.domain.ChatMessage
@@ -25,6 +29,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
@@ -37,6 +42,8 @@ const val MAX_CHATTERS_PER_CHANNEL = 16_384L
 const val MESSAGES_PER_USER = 5
 
 const val NOT_SHARING = ""
+
+val log = LoggerFactory.getLogger("io.github.iprodigy.MainKt")!!
 
 val MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
@@ -70,12 +77,14 @@ val sharingChannels = createCache<String, String> {
 }
 
 fun main() {
+    log.info("Starting application...")
+
     // keep app access token healthy
     exec.scheduleWithFixedDelay({
         try {
             token.updateCredential(identityProvider.getAppAccessToken())
         } catch (e: Exception) {
-            e.printStackTrace()
+            log.warn("Failed to regenerate credential", e)
         }
     }, 14L, 7L, TimeUnit.DAYS)
 
@@ -91,22 +100,44 @@ fun main() {
     }
 
     if (oldConduit == null) {
+        log.debug("Created new conduit with ID: {}", conduit.conduitId)
         conduit.register(SubscriptionTypes.USER_AUTHORIZATION_GRANT) { it.clientId(CLIENT_ID).build() }
         conduit.register(SubscriptionTypes.USER_AUTHORIZATION_REVOKE) { it.clientId(CLIENT_ID).build() }
+    } else {
+        log.debug("Reusing existing conduit with ID: {}", oldConduit.id)
+    }
+
+    conduit.eventManager.onEvent(EventSocketWelcomedEvent::class.java) {
+        if (it.isSessionChanged) {
+            log.info("Shard freshly connected: {}", it.sessionId)
+        } else {
+            log.debug("Shared gracefully reconnected: {}", it.sessionId)
+        }
+    }
+
+    conduit.eventManager.onEvent(EventSocketClosedByTwitchEvent::class.java) {
+        log.warn("Twitch closed shard {} due to {}", it.connection.websocketId, it.reason)
+    }
+
+    conduit.eventManager.onEvent(EventSocketConnectionStateEvent::class.java) {
+        if (it.state == WebsocketConnectionState.LOST) {
+            log.warn("Shard lost connection")
+        }
     }
 
     conduit.eventManager.onEvent(ConduitShardReassociationFailureEvent::class.java) {
-        println(it)
+        log.error("Failed to re-associate shard {} with conduit", it.shardId, it.exception)
     }
 
     conduit.eventManager.onEvent(UserAuthorizationGrantEvent::class.java) { e ->
         exec.execute {
             val fresh = helix.getEventSubSubscriptions(null, null, null, e.userId, null, null)
-                .executeOrNull()
+                .executeOrNull { log.warn("Failed to obtain eventsub subscriptions for {}", e.userId, it) }
                 ?.subscriptions
                 ?.isEmpty()
                 ?: true
             if (fresh) {
+                log.debug("Received fresh authorization: {}", e)
                 conduit.register(SubscriptionTypes.CHANNEL_MODERATE) {
                     it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
                 }
@@ -124,6 +155,8 @@ fun main() {
                 conduit.register(SubscriptionTypes.CHANNEL_SUSPICIOUS_USER_MESSAGE) {
                     it.broadcasterUserId(e.userId).moderatorUserId(e.userId).build()
                 }
+            } else {
+                log.debug("Received repeat authorization: {}", e)
             }
 
             storeAuth(e.userId, e.userLogin, e.userName, true)
@@ -139,7 +172,11 @@ fun main() {
                 .execute()
                 .subscriptions
                 .filter { sub -> sub.status == EventSubSubscriptionStatus.ENABLED }
-                .forEach { sub -> helix.deleteEventSubSubscription(null, sub.id).executeOrNull() }
+                .forEach { sub ->
+                    helix.deleteEventSubSubscription(null, sub.id).executeOrNull { e ->
+                        log.warn("Failed to delete eventsub subscription with ID {} for {}", sub.id, it.userId, e)
+                    }
+                }
         }
     }
 
@@ -206,13 +243,17 @@ fun main() {
             .build()
         httpClient.newCall(req).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                e.printStackTrace()
+                log.warn("Failed to post moderation action: {}", payload, e)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (!response.isSuccessful) {
-                        println(response.body?.toString())
+                        log.warn(
+                            "Unsuccessfully posted moderation action: {} due to {}",
+                            payload,
+                            response.body?.toString()
+                        )
                     }
                 }
             }
@@ -290,20 +331,33 @@ fun main() {
         sharingChannels.remove(it.broadcasterUserId)
 
         val message = "The shared chat session has ended! Mods, you can review moderation actions at our website"
-        helix.sendChatMessage(null, ChatMessage(it.broadcasterUserId, BOT_ID, message, null)).executeOrNull()
+        helix.sendChatMessage(null, ChatMessage(it.broadcasterUserId, BOT_ID, message, null))
+            .executeOrNull { e -> log.warn("Failed to send chat message to {}", it.broadcasterUserLogin, e) }
+            ?.get()
+            ?.dropReason
+            ?.run { log.debug("Could not message {} due to {}", it.broadcasterUserLogin, this) }
     }
+
+    log.info("Completed application initialization.")
 }
 
 private fun loadSharing(channelId: String) {
-    val session = helix.getSharedChatSession(null, channelId).executeOrNull() ?: return
+    val session = helix.getSharedChatSession(null, channelId)
+        .executeOrNull { log.warn("Could not query shared session for {}", channelId, it) }
+        ?: return
     sharingChannels.put(channelId, session.get()?.sessionId ?: NOT_SHARING)
 }
 
 private fun storeAuth(channelId: String, channelLogin: String, channelName: String, added: Boolean) {
     val name = if (channelLogin.equals(channelName, ignoreCase = true)) channelName else channelLogin
     val image = added.takeIf { it }
-        ?.let { helix.getUsers(null, listOf(channelId), null).executeOrNull()?.users?.firstOrNull()?.profileImageUrl }
-        ?: ""
+        ?.let {
+            helix.getUsers(null, listOf(channelId), null)
+                .executeOrNull { log.warn("Could not query user {}", channelId, it) }
+                ?.users
+                ?.firstOrNull()
+                ?.profileImageUrl
+        } ?: ""
     val payload = AuthPayload(channelId, name, image, Instant.now().epochSecond, added)
     val body = Json.encodeToString(payload).toRequestBody(MEDIA_TYPE)
     val req = Request.Builder()
@@ -313,13 +367,13 @@ private fun storeAuth(channelId: String, channelLogin: String, channelName: Stri
         .build()
     httpClient.newCall(req).enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) {
-            e.printStackTrace()
+            log.warn("Could not store authorization: {}", payload, e)
         }
 
         override fun onResponse(call: Call, response: Response) {
             response.use {
                 if (!response.isSuccessful) {
-                    println(response.body?.toString())
+                    log.warn("Unsuccessfully put authorization: {} due to {}", payload, response.body?.toString())
                 }
             }
         }

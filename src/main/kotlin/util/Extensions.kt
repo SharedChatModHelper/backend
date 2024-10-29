@@ -6,11 +6,7 @@ import java.util.Queue
 import java.util.concurrent.BlockingQueue
 
 // Hystrix
-fun <T> HystrixCommand<T>.executeOrNull(
-    exceptionHandler: ((Exception) -> Unit)? = {
-        it.printStackTrace()
-    }
-): T? = try {
+fun <T> HystrixCommand<T>.executeOrNull(exceptionHandler: ((Exception) -> Unit)?): T? = try {
     this.execute()
 } catch (e: Exception) {
     exceptionHandler?.invoke(e)
