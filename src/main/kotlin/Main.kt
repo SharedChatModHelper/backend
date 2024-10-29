@@ -144,11 +144,15 @@ fun main() {
                 conduit.register(SubscriptionTypes.CHANNEL_CHAT_MESSAGE) {
                     it.broadcasterUserId(e.userId).userId(e.userId).build()
                 }
-                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_BEGIN) { it.broadcasterUserId(e.userId).build() }
+                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_BEGIN) {
+                    it.broadcasterUserId(e.userId).build()
+                }
                 conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_UPDATE) {
                     it.broadcasterUserId(e.userId).build()
                 }
-                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_END) { it.broadcasterUserId(e.userId).build() }
+                conduit.register(SubscriptionTypes.CHANNEL_SHARED_CHAT_END) {
+                    it.broadcasterUserId(e.userId).build()
+                }
                 conduit.register(SubscriptionTypes.CHANNEL_CHAT_NOTIFICATION) {
                     it.broadcasterUserId(e.userId).userId(e.userId).build()
                 }
