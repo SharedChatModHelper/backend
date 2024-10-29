@@ -302,7 +302,7 @@ private fun loadSharing(channelId: String) {
 private fun storeAuth(channelId: String, channelLogin: String, channelName: String, added: Boolean) {
     val name = if (channelLogin.equals(channelName, ignoreCase = true)) channelName else channelLogin
     val image = added.takeIf { it }
-        ?.let { helix.getUsers(null, null, null).executeOrNull()?.users?.firstOrNull()?.profileImageUrl }
+        ?.let { helix.getUsers(null, listOf(channelId), null).executeOrNull()?.users?.firstOrNull()?.profileImageUrl }
         ?: ""
     val payload = AuthPayload(channelId, name, image, Instant.now().epochSecond, added)
     val body = Json.encodeToString(payload).toRequestBody(MEDIA_TYPE)
