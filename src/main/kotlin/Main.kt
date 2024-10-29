@@ -126,6 +126,7 @@ fun main() {
                 }
             }
 
+            storeAuth(e.userId, e.userLogin, e.userName, true)
             loadSharing(e.userId)
         }
     }
@@ -133,6 +134,7 @@ fun main() {
     conduit.eventManager.onEvent(UserAuthorizationRevokeEvent::class.java) {
         sharingChannels.remove(it.userId)
         exec.execute {
+            storeAuth(it.userId, it.userLogin, it.userName, false)
             helix.getEventSubSubscriptions(null, null, null, it.userId, null, null)
                 .execute()
                 .subscriptions
@@ -293,8 +295,35 @@ fun main() {
 }
 
 private fun loadSharing(channelId: String) {
-    val session = helix.getSharedChatSession(null, channelId).execute().get()
-    sharingChannels.put(channelId, session?.sessionId ?: NOT_SHARING)
+    val session = helix.getSharedChatSession(null, channelId).executeOrNull() ?: return
+    sharingChannels.put(channelId, session.get()?.sessionId ?: NOT_SHARING)
+}
+
+private fun storeAuth(channelId: String, channelLogin: String, channelName: String, added: Boolean) {
+    val name = if (channelLogin.equals(channelName, ignoreCase = true)) channelName else channelLogin
+    val image = added.takeIf { it }
+        ?.let { helix.getUsers(null, null, null).executeOrNull()?.users?.firstOrNull()?.profileImageUrl }
+        ?: ""
+    val payload = AuthPayload(channelId, name, image, Instant.now().epochSecond, added)
+    val body = Json.encodeToString(payload).toRequestBody(MEDIA_TYPE)
+    val req = Request.Builder()
+        .url(BACKEND_URL)
+        .header("Authorization", "Bearer $DB_TOKEN")
+        .put(body)
+        .build()
+    httpClient.newCall(req).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            e.printStackTrace()
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            response.use {
+                if (!response.isSuccessful) {
+                    println(response.body?.toString())
+                }
+            }
+        }
+    })
 }
 
 private fun cacheMessage(
@@ -345,4 +374,13 @@ data class Payload(
     val duration: Int,
     val reason: String?,
     val messages: Collection<CachedMessage>?
+)
+
+@Serializable
+data class AuthPayload(
+    val channelId: String,
+    val channelName: String,
+    val imageUrl: String,
+    val timestamp: Long,
+    val added: Boolean
 )
