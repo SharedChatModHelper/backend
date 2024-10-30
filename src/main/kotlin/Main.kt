@@ -5,6 +5,7 @@ import com.github.twitch4j.client.websocket.domain.WebsocketConnectionState
 import com.github.twitch4j.common.util.ThreadUtils
 import com.github.twitch4j.eventsub.EventSubSubscriptionStatus
 import com.github.twitch4j.eventsub.domain.SuspiciousStatus
+import com.github.twitch4j.eventsub.domain.chat.Fragment
 import com.github.twitch4j.eventsub.domain.chat.Message
 import com.github.twitch4j.eventsub.domain.moderation.Action
 import com.github.twitch4j.eventsub.domain.moderation.UserTarget
@@ -277,7 +278,7 @@ fun main() {
 
         if (cachedSession == null) {
             if (sourceRoomId != null && sourceRoomId != broadcasterUserId) {
-                cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
+                cacheMessage(broadcasterUserId, chatterUserId, msg, message, sourceRoomId, sourceRoomLogin)
                 exec.execute { loadSharing(broadcasterUserId) }
             } else {
                 exec.execute {
@@ -288,12 +289,12 @@ fun main() {
                     }
 
                     if (!sharingChannels[broadcasterUserId].isNullOrEmpty()) {
-                        cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
+                        cacheMessage(broadcasterUserId, chatterUserId, msg, message, sourceRoomId, sourceRoomLogin)
                     }
                 }
             }
         } else {
-            cacheMessage(broadcasterUserId, chatterUserId, msg, sourceRoomId, sourceRoomLogin)
+            cacheMessage(broadcasterUserId, chatterUserId, msg, message, sourceRoomId, sourceRoomLogin)
         }
     }
 
@@ -387,7 +388,8 @@ private fun storeAuth(channelId: String, channelLogin: String, channelName: Stri
 private fun cacheMessage(
     channelId: String,
     userId: String,
-    message: String,
+    msg: String,
+    message: Message,
     sourceRoomId: String?,
     sourceRoomLogin: String?
 ) {
@@ -403,15 +405,60 @@ private fun cacheMessage(
         ConcurrentBoundedDeque(MESSAGES_PER_USER)
     }
 
-    queue.offer(CachedMessage(message, Instant.now().epochSecond, sourceRoomId, sourceRoomLogin))
+    queue.offer(
+        CachedMessage(
+            text = msg,
+            ts = Instant.now().epochSecond,
+            sourceId = sourceRoomId,
+            sourceLogin = sourceRoomLogin,
+            fragments = parseFragments(message),
+            emotes = parseEmotes(message)
+        )
+    )
 }
+
+fun parseEmotes(message: Message): Map<String, String> {
+    if (message.fragments.isNullOrEmpty()) return emptyMap()
+    return message.fragments.filter { it.type == Fragment.Type.EMOTE }.associate { it.text to it.emote!!.id }
+}
+
+fun parseFragments(message: Message): List<SimpleFragment> {
+    if (message.fragments.isNullOrEmpty())
+        return listOf(SimpleFragment(message.cleanedText))
+
+    return message.fragments.mapNotNull {
+        when (it.type) {
+            Fragment.Type.CHEERMOTE -> {
+                val cheermote = it.cheermote!!
+                SimpleFragment(cheermote.prefix + cheermote.bits)
+            }
+
+            Fragment.Type.EMOTE -> {
+                val emote = it.emote!!
+                SimpleFragment(it.text, emote.id)
+            }
+
+            Fragment.Type.MENTION -> {
+                val name = it.mention!!.userLogin.equals(it.mention!!.userName, ignoreCase = true)
+                SimpleFragment("@$name")
+            }
+
+            else -> SimpleFragment(it.text)
+        }
+    }
+}
+
+@Serializable
+data class SimpleFragment(val text: String, val emoteId: String? = null)
 
 @Serializable
 data class CachedMessage(
     val text: String,
     val ts: Long? = null,
     val sourceId: String? = null,
-    val sourceLogin: String? = null
+    val sourceLogin: String? = null,
+    val fragments: List<SimpleFragment>? = null,
+    val emotes: Map<String, String>? = null
 )
 
 @Serializable
