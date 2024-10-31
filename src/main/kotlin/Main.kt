@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit
 
 const val MAX_CHANNELS = 65_536L
 const val MAX_CHATTERS_PER_CHANNEL = 16_384L
-const val MESSAGES_PER_USER = 5
+const val MESSAGES_PER_USER = 8
 
 const val NOT_SHARING = ""
 
