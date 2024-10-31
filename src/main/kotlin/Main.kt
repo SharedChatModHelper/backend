@@ -201,6 +201,7 @@ fun main() {
                 duration = Duration.between(Instant.now(), e.sharedChatTimeout!!.expiresAt)
                     .seconds
                     .toInt()
+                    .let { it + 1 }
                     .coerceAtLeast(1)
                 reason = e.sharedChatTimeout!!.reason
             }
