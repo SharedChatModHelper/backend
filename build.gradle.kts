@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     kotlin("jvm") version "2.0.21"
     kotlin("plugin.serialization") version "2.0.20"
-    id("com.gradleup.shadow") version "8.3.4"
+    id("com.gradleup.shadow") version "8.3.5"
     application
 }
 
@@ -16,12 +16,8 @@ repositories {
 }
 
 dependencies {
-    implementation(group = "ch.qos.logback", name = "logback-classic", version = "1.5.11")
-    implementation(group = "com.github.twitch4j", name = "twitch4j", version = "1.22.0") {
-        // temporary due to https://github.com/twitch4j/twitch4j/pull/1070
-        exclude(group = "com.github.twitch4j", module = "twitch4j-eventsub-common")
-    }
-    implementation(files("libs/twitch4j-eventsub-common.jar"))
+    implementation(group = "ch.qos.logback", name = "logback-classic", version = "1.5.12")
+    implementation(group = "com.github.twitch4j", name = "twitch4j", version = "1.23.0")
     implementation(group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3")
     implementation(platform("io.github.xanthic.cache:cache-bom:0.6.2"))
     implementation(group = "io.github.xanthic.cache", name = "cache-provider-caffeine3")
